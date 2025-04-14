@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using UnityChess;
 using UnityEngine;
 
+using Unity.Netcode;
+
 /// <summary>
 /// Manages the overall game state, including game start, moves execution,
 /// special moves handling (such as castling, en passant, and promotion), and game reset.
@@ -327,6 +329,12 @@ public class GameManager : MonoBehaviourSingleton<GameManager> {
 			// Re-parent the moved piece to the destination square and update its position.
 			movedPieceTransform.parent = closestBoardSquareTransform;
 			movedPieceTransform.position = closestBoardSquareTransform.position;
+
+			// SWITCH TURN ON SERVER AFTER MOVE EXECUTES
+			if (NetworkManager.Singleton.IsServer)
+			{
+				TurnManager.Instance.EndTurnServerRpc();
+			}
 		}
 	}
 	

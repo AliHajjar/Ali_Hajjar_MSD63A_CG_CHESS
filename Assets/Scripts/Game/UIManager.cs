@@ -4,12 +4,14 @@ using UnityChess;
 using UnityEngine;
 using UnityEngine.UI;
 
+
 /// <summary>
 /// Manages the user interface of the chess game, including promotion UI, move history,
 /// turn indicators, game string serialization, and board information displays.
 /// Inherits from MonoBehaviourSingleton to ensure a single instance throughout the game.
 /// </summary>
 public class UIManager : MonoBehaviourSingleton<UIManager> {
+
 	// Reference to the promotion UI panel.
 	[SerializeField] private GameObject promotionUI = null;
 	// Text element to display game result messages (e.g. win, draw).
