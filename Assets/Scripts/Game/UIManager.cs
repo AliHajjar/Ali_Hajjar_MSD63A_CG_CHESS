@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityChess;
 using UnityEngine;
 using UnityEngine.UI;
+using static GameResult;
 
 
 /// <summary>
@@ -95,20 +96,21 @@ public class UIManager : MonoBehaviourSingleton<UIManager> {
 	/// Handles the event when the game ends (via checkmate or stalemate).
 	/// Displays the game outcome message.
 	/// </summary>
-	private void OnGameEnded() {
-		// Retrieve the latest half-move from the game timeline.
-		GameManager.Instance.HalfMoveTimeline.TryGetCurrent(out HalfMove latestHalfMove);
+	public void OnGameEnded(GameResult result)
+	{
+		string message = result switch
+		{
+			GameResult.WhiteWinByCheckmate => "White wins by checkmate!",
+			GameResult.BlackWinByCheckmate => "Black wins by checkmate!",
+			GameResult.DrawByStalemate => "Game drawn by stalemate.",
+			GameResult.DrawByResignation => "Game ended by resignation.",
+			_ => "Game Over."
+		};
 
-		// Set the result text based on whether checkmate or stalemate occurred.
-		if (latestHalfMove.CausedCheckmate) {
-			resultText.text = $"{latestHalfMove.Piece.Owner} Wins!";
-		} else if (latestHalfMove.CausedStalemate) {
-			resultText.text = "Draw.";
-		}
-
-		// Display the result text.
+		resultText.text = message;
 		resultText.gameObject.SetActive(true);
 	}
+
 
 	/// <summary>
 	/// Handles the event when a move is executed.
@@ -177,7 +179,12 @@ public class UIManager : MonoBehaviourSingleton<UIManager> {
 	/// Starts a new game by invoking the corresponding method in GameManager.
 	/// </summary>
 	public void StartNewGame() => GameManager.Instance.StartNewGame();
-	
+
+	public void OnResignButtonPressed()
+	{
+		GameManager.Instance.HandleResignation(GameManager.Instance.SideToMove);
+	}
+
 	/// <summary>
 	/// Loads a game from the text entered in the game string input field.
 	/// </summary>

@@ -15,10 +15,11 @@ public class GameManager : NetworkMonoBehaviourSingleton<GameManager>
 {
 	// Events signalling various game state changes.
 	public static event Action NewGameStartedEvent;
-	public static event Action GameEndedEvent;
+	public static event Action<GameResult> GameEndedEvent;
 	public static event Action GameResetToHalfMoveEvent;
 	public static event Action MoveExecutedEvent;
-	
+
+
 	/// <summary>
 	/// Gets the current board state from the game.
 	/// </summary>
@@ -185,22 +186,45 @@ public class GameManager : NetworkMonoBehaviourSingleton<GameManager>
 
 		// Retrieve the latest half-move from the timeline.
 		HalfMoveTimeline.TryGetCurrent(out HalfMove latestHalfMove);
-		
+
 		// If the latest move resulted in checkmate or stalemate, disable further moves.
-		if (latestHalfMove.CausedCheckmate || latestHalfMove.CausedStalemate) {
+		if (latestHalfMove.CausedCheckmate || latestHalfMove.CausedStalemate)
+		{
 			BoardManager.Instance.SetActiveAllPieces(false);
-			GameEndedEvent?.Invoke();
-		} else {
-			// Otherwise, ensure that only the pieces of the side to move are enabled.
-			BoardManager.Instance.EnsureOnlyPiecesOfSideAreEnabled(SideToMove);
+
+			GameResult result;
+			if (latestHalfMove.CausedCheckmate)
+			{
+				result = SideToMove == Side.White ? GameResult.BlackWinByCheckmate : GameResult.WhiteWinByCheckmate;
+			}
+			else
+			{
+				result = GameResult.DrawByStalemate;
+			}
+
+			EndGameClientRpc(result);
+			GameEndedEvent?.Invoke(result);
+
 		}
+
 
 		// Signal that a move has been executed.
 		MoveExecutedEvent?.Invoke();
 
 		return true;
 	}
-	
+
+	public void HandleResignation(Side resigningSide)
+	{
+		GameResult result = resigningSide == Side.White
+			? GameResult.BlackWinByResignation
+			: GameResult.WhiteWinByResignation;
+
+		BoardManager.Instance.SetActiveAllPieces(false);
+		EndGameClientRpc(result);
+		GameEndedEvent?.Invoke(result);
+	}
+
 	/// <summary>
 	/// Handles special move behaviour asynchronously (castling, en passant, and promotion).
 	/// </summary>
@@ -414,6 +438,12 @@ public class GameManager : NetworkMonoBehaviourSingleton<GameManager>
 		}
 	}
 
+	[ClientRpc]
+	private void EndGameClientRpc(GameResult result)
+	{
+		Debug.Log($"[Client] Game has ended: {result}");
+		UIManager.Instance.OnGameEnded(result);
+	}
 
 
 }
