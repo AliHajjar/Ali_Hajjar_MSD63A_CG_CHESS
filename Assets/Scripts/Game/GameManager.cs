@@ -225,6 +225,12 @@ public class GameManager : NetworkMonoBehaviourSingleton<GameManager>
 		GameEndedEvent?.Invoke(result);
 	}
 
+	[ServerRpc(RequireOwnership = false)]
+	public void ResignServerRpc(Side resigningSide)
+	{
+		HandleResignation(resigningSide);
+	}
+
 	/// <summary>
 	/// Handles special move behaviour asynchronously (castling, en passant, and promotion).
 	/// </summary>

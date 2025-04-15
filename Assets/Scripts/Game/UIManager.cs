@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using UnityChess;
 using UnityEngine;
 using UnityEngine.UI;
+
+using Unity.Netcode;
 using static GameResult;
 
 
@@ -103,7 +105,8 @@ public class UIManager : MonoBehaviourSingleton<UIManager> {
 			GameResult.WhiteWinByCheckmate => "White wins by checkmate!",
 			GameResult.BlackWinByCheckmate => "Black wins by checkmate!",
 			GameResult.DrawByStalemate => "Game drawn by stalemate.",
-			GameResult.DrawByResignation => "Game ended by resignation.",
+			GameResult.WhiteWinByResignation => "White wins by resignation!",
+			GameResult.BlackWinByResignation => "Black wins by resignation!",
 			_ => "Game Over."
 		};
 
@@ -182,8 +185,20 @@ public class UIManager : MonoBehaviourSingleton<UIManager> {
 
 	public void OnResignButtonPressed()
 	{
-		GameManager.Instance.HandleResignation(GameManager.Instance.SideToMove);
+		bool isWhite = PlayerNetwork.Local?.IsWhite?.Value ?? true;
+		Side mySide = isWhite ? Side.White : Side.Black;
+
+		if (NetworkManager.Singleton.IsServer)
+		{
+			GameManager.Instance.HandleResignation(mySide);
+		}
+		else
+		{
+			GameManager.Instance.ResignServerRpc(mySide);
+		}
 	}
+
+
 
 	/// <summary>
 	/// Loads a game from the text entered in the game string input field.

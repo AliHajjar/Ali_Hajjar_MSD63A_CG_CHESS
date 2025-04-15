@@ -4,8 +4,7 @@ public enum GameResult
     WhiteWinByCheckmate,
     BlackWinByCheckmate,
     DrawByStalemate,
-    DrawByResignation,
     WhiteWinByResignation,
     BlackWinByResignation
-
 }
+
