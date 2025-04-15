@@ -47,4 +47,11 @@ public class PurchasedSkinManager : MonoBehaviour
             purchasedSkins = new HashSet<string>(data.Split(','));
         }
     }
+
+    public void ResetPurchases()
+    {
+        purchasedSkins.Clear();
+        Debug.Log("All purchased skins have been cleared.");
+    }
+
 }

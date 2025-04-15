@@ -6,6 +6,15 @@ using UnityChess;
 using UnityEngine;
 using Unity.Netcode;
 
+using Unity.Services.Analytics;
+using Unity.Services.Core;
+
+using UnityEngine.Analytics;
+
+using Firebase;
+using Firebase.Database;
+
+
 /// <summary>
 /// Manages the overall game state, including game start, moves execution,
 /// special moves handling (such as castling, en passant, and promotion), and game reset.
@@ -129,14 +138,27 @@ public class GameManager : NetworkMonoBehaviourSingleton<GameManager>
 		unityChessDebug.enabled = true;
 #endif
 	}
-	
+
 	/// <summary>
 	/// Starts a new game by creating a new game instance and invoking the NewGameStartedEvent.
 	/// </summary>
-	public async void StartNewGame() {
+	public async void StartNewGame()
+	{
 		game = new Game();
 		NewGameStartedEvent?.Invoke();
+
+		await UnityServices.InitializeAsync();
+
+		FirebaseApp.DefaultInstance.Options.DatabaseUrl = new System.Uri("https://cgmsd63a-default-rtdb.firebaseio.com/");
+
+		// Log match start
+		Analytics.CustomEvent("match_started", new Dictionary<string, object>
+		{
+			{ "timestamp", System.DateTime.UtcNow.ToString("o") },
+			{ "userId", SystemInfo.deviceUniqueIdentifier }
+		});
 	}
+
 
 	/// <summary>
 	/// Serialises the current game state using the selected serialization format.
@@ -417,6 +439,57 @@ public class GameManager : NetworkMonoBehaviourSingleton<GameManager>
 		return game.TryGetLegalMovesForPiece(piece, out _);
 	}
 
+	public void SaveGameToFirebase()
+	{
+		string serializedGame = SerializeGame(); // FEN/PGN
+		string userId = SystemInfo.deviceUniqueIdentifier;
+
+		FirebaseDatabase.DefaultInstance
+			.RootReference
+			.Child("savedGames")
+			.Child(userId)
+			.SetValueAsync(serializedGame).ContinueWith(task =>
+			{
+				if (task.IsCompleted)
+					Debug.Log(" Game saved to Firebase.");
+				else
+					Debug.LogError(" Save failed: " + task.Exception);
+			});
+	}
+
+	public void LoadGameFromFirebase()
+	{
+		string userId = SystemInfo.deviceUniqueIdentifier;
+
+		FirebaseDatabase.DefaultInstance
+			.RootReference
+			.Child("savedGames")
+			.Child(userId)
+			.GetValueAsync().ContinueWith(task =>
+			{
+				if (task.IsCompleted)
+				{
+					string savedState = task.Result.Value.ToString();
+					LoadGame(savedState);
+					Debug.Log(" Game state restored.");
+				}
+				else
+				{
+					Debug.LogError(" Load failed: " + task.Exception);
+				}
+			});
+	}
+
+	private void Update()
+	{
+		if (Input.GetKeyDown(KeyCode.F5))
+			SaveGameToFirebase();
+
+		if (Input.GetKeyDown(KeyCode.F9))
+			LoadGameFromFirebase();
+	}
+
+
 	[ClientRpc]
 	public void UpdatePiecePositionClientRpc(string startSquare, string endSquare)
 	{
@@ -449,7 +522,13 @@ public class GameManager : NetworkMonoBehaviourSingleton<GameManager>
 	{
 		Debug.Log($"[Client] Game has ended: {result}");
 		UIManager.Instance.OnGameEnded(result);
+
+		// Log match end
+		Analytics.CustomEvent("match_ended", new Dictionary<string, object>
+		{
+			{ "result", result.ToString() },
+			{ "timestamp", System.DateTime.UtcNow.ToString("o") },
+			{ "userId", SystemInfo.deviceUniqueIdentifier }
+		});
 	}
-
-
 }
