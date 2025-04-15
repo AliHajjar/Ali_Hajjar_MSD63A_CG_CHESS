@@ -18,7 +18,7 @@ public class VisualPiece : MonoBehaviour
 	public delegate void VisualPieceMovedAction(Square movedPieceInitialSquare, Transform movedPieceTransform, Transform closestBoardSquareTransform, Piece promotionPiece = null);
 
 	// Static event raised when a visual piece is moved.
-	public static event VisualPieceMovedAction VisualPieceMoved;
+	// public static event VisualPieceMovedAction VisualPieceMoved;
 
 	// The colour (side) of the piece (White or Black).
 	public Side PieceColor;
@@ -88,31 +88,23 @@ public class VisualPiece : MonoBehaviour
 	{
 		if (!enabled || !CanMoveThisPiece()) return;
 
-		// Clear any previous potential landing square candidates.
 		potentialLandingSquares.Clear();
-		// Obtain all square GameObjects within the collision radius of the piece's current position.
 		BoardManager.Instance.GetSquareGOsWithinRadius(potentialLandingSquares, thisTransform.position, SquareCollisionRadius);
 
-		// If no squares are found, assume the piece was moved off the board and reset its position.
 		if (potentialLandingSquares.Count == 0)
 		{
 			thisTransform.position = thisTransform.parent.position;
 			return;
 		}
 
-		// Determine the closest square from the list of potential landing squares.
 		Transform closestSquareTransform = potentialLandingSquares[0].transform;
-		// Calculate the square of the distance between the piece and the first candidate square.
 		float shortestDistanceFromPieceSquared = (closestSquareTransform.position - thisTransform.position).sqrMagnitude;
 
-		// Iterate through remaining potential squares to find the closest one.
 		for (int i = 1; i < potentialLandingSquares.Count; i++)
 		{
 			GameObject potentialLandingSquare = potentialLandingSquares[i];
-			// Calculate the squared distance from the piece to the candidate square.
 			float distanceFromPieceSquared = (potentialLandingSquare.transform.position - thisTransform.position).sqrMagnitude;
 
-			// If the current candidate is closer than the previous closest, update the closest square.
 			if (distanceFromPieceSquared < shortestDistanceFromPieceSquared)
 			{
 				shortestDistanceFromPieceSquared = distanceFromPieceSquared;
@@ -120,16 +112,29 @@ public class VisualPiece : MonoBehaviour
 			}
 		}
 
-		// Raise the VisualPieceMoved event with the initial square, the piece's transform, and the closest square transform.
-		VisualPieceMoved?.Invoke(CurrentSquare, thisTransform, closestSquareTransform);
+		// Replace the local event with a server call
+		var playerObj = NetworkManager.Singleton.LocalClient?.PlayerObject;
+		if (playerObj != null && GameManager.Instance != null)
+		{
+			string startSquare = CurrentSquare.ToString();
+			string endSquare = closestSquareTransform.name;
+			GameManager.Instance.TryRequestMoveServerRpc(startSquare, endSquare);
+		}
+		else
+		{
+			Debug.LogWarning("GameManager or PlayerObject missing, cannot send move.");
+		}
+
+		// Snap piece back visually for now, actual move will be synced by server
+		thisTransform.position = thisTransform.parent.position;
 	}
+
 
 	/// <summary>
 	/// Checks whether the local player is allowed to move this piece based on their side and turn.
 	/// </summary>
 	private bool CanMoveThisPiece()
 	{
-		// Make sure Netcode is ready and running as a client
 		if (!NetworkManager.Singleton || !NetworkManager.Singleton.IsConnectedClient)
 			return false;
 
@@ -154,12 +159,12 @@ public class VisualPiece : MonoBehaviour
 			return false;
 		}
 
-		// Block if the piece doesn't belong to the player
-		if (localPlayer.isWhite != (PieceColor == Side.White))
+		// Use NetworkVariable for synced value
+		if (localPlayer.IsWhite.Value != (PieceColor == Side.White))
 			return false;
 
-		// Block if it's not their turn
-		return TurnManager.Instance != null && TurnManager.Instance.IsMyTurn(localPlayer.isWhite);
+		return TurnManager.Instance != null && TurnManager.Instance.IsMyTurn(localPlayer.IsWhite.Value);
 	}
+
 
 }

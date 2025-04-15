@@ -165,18 +165,22 @@ public class BoardManager : MonoBehaviourSingleton<BoardManager> {
 	/// Enables only the pieces belonging to the specified side that also have legal moves.
 	/// </summary>
 	/// <param name="side">The side (White or Black) to enable.</param>
-	public void EnsureOnlyPiecesOfSideAreEnabled(Side side) {
-		// Retrieve all VisualPiece components in child objects.
-		VisualPiece[] visualPiece = GetComponentsInChildren<VisualPiece>(true);
-		// Loop over each VisualPiece.
-		foreach (VisualPiece pieceBehaviour in visualPiece) {
-			// Get the corresponding chess piece from the board.
-			Piece piece = GameManager.Instance.CurrentBoard[pieceBehaviour.CurrentSquare];
-			// Enable the piece only if it belongs to the specified side and has legal moves.
-			pieceBehaviour.enabled = pieceBehaviour.PieceColor == side
-			                         && GameManager.Instance.HasLegalMoves(piece);
+	public void EnsureOnlyPiecesOfSideAreEnabled(Side side)
+	{
+		Debug.Log($"[BoardManager] Enabling only {side}'s pieces");
+
+		VisualPiece[] visualPieces = GetComponentsInChildren<VisualPiece>(true);
+		foreach (var visualPiece in visualPieces)
+		{
+			bool shouldBeActive = visualPiece.PieceColor == side;
+			if (visualPiece.TryGetComponent<Collider>(out var collider))
+			{
+				collider.enabled = shouldBeActive;
+			}
 		}
 	}
+
+
 
 	/// <summary>
 	/// Destroys the visual representation of a piece at the specified square.
@@ -233,4 +237,10 @@ public class BoardManager : MonoBehaviourSingleton<BoardManager> {
 	/// <returns>The corresponding square GameObject.</returns>
 	public GameObject GetSquareGOByPosition(Square position) =>
 		Array.Find(allSquaresGO, go => go.name == SquareToString(position));
+
+	public GameObject GetSquareGOAtPosition(Square square)
+	{
+		return GetSquareGOByPosition(square);
+	}
+
 }

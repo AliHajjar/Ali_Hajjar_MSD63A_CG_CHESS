@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityChess;
 using UnityEngine;
-
 using Unity.Netcode;
 
 /// <summary>
@@ -12,7 +11,8 @@ using Unity.Netcode;
 /// special moves handling (such as castling, en passant, and promotion), and game reset.
 /// Inherits from a singleton base class to ensure a single instance throughout the application.
 /// </summary>
-public class GameManager : MonoBehaviourSingleton<GameManager> {
+public class GameManager : NetworkMonoBehaviourSingleton<GameManager>
+{
 	// Events signalling various game state changes.
 	public static event Action NewGameStartedEvent;
 	public static event Action GameEndedEvent;
@@ -111,7 +111,7 @@ public class GameManager : MonoBehaviourSingleton<GameManager> {
 	/// </summary>
 	public void Start() {
 		// Subscribe to the event triggered when a visual piece is moved.
-		VisualPiece.VisualPieceMoved += OnPieceMoved;
+		// VisualPiece.VisualPieceMoved += OnPieceMoved;
 
 		// Initialise the serializers for FEN and PGN formats.
 		serializersByType = new Dictionary<GameSerializationType, IGameSerializer> {
@@ -179,6 +179,7 @@ public class GameManager : MonoBehaviourSingleton<GameManager> {
 	private bool TryExecuteMove(Movement move) {
 		// Attempt to execute the move within the game logic.
 		if (!game.TryExecuteMove(move)) {
+			Debug.LogWarning($"Move failed execution: {move}");
 			return false;
 		}
 
@@ -291,12 +292,15 @@ public class GameManager : MonoBehaviourSingleton<GameManager> {
 	/// <param name="movedPieceTransform">The transform of the moved piece.</param>
 	/// <param name="closestBoardSquareTransform">The transform of the closest board square.</param>
 	/// <param name="promotionPiece">Optional promotion piece (used in pawn promotion).</param>
-	private async void OnPieceMoved(Square movedPieceInitialSquare, Transform movedPieceTransform, Transform closestBoardSquareTransform, Piece promotionPiece = null) {
+	private async Task OnPieceMoved(Square movedPieceInitialSquare, Transform movedPieceTransform, Transform closestBoardSquareTransform, Piece promotionPiece = null)
+	{
 		// Determine the destination square based on the name of the closest board square transform.
 		Square endSquare = new Square(closestBoardSquareTransform.name);
 
 		// Attempt to retrieve a legal move from the game logic.
 		if (!game.TryGetLegalMove(movedPieceInitialSquare, endSquare, out Movement move)) {
+			Debug.LogWarning($"Illegal move attempted from {movedPieceInitialSquare} to {endSquare}");
+
 			// If no legal move is found, reset the piece's position.
 			movedPieceTransform.position = movedPieceTransform.parent.position;
 #if DEBUG_VIEW
@@ -316,28 +320,64 @@ public class GameManager : MonoBehaviourSingleton<GameManager> {
 		// If the move is not a special move or its special behaviour is successfully handled,
 		// and the move executes successfully...
 		if ((move is not SpecialMove specialMove || await TryHandleSpecialMoveBehaviourAsync(specialMove))
-		    && TryExecuteMove(move)
-		) {
-			// For non-special moves, update the board visuals by destroying any piece at the destination.
-			if (move is not SpecialMove) { BoardManager.Instance.TryDestroyVisualPiece(move.End); }
+			&& TryExecuteMove(move))
+		{
+			if (move is not SpecialMove)
+				BoardManager.Instance.TryDestroyVisualPiece(move.End);
 
-			// For promotion moves, update the moved piece transform to the newly created visual piece.
-			if (move is PromotionMove) {
+			if (move is PromotionMove)
 				movedPieceTransform = BoardManager.Instance.GetPieceGOAtPosition(move.End).transform;
-			}
 
-			// Re-parent the moved piece to the destination square and update its position.
 			movedPieceTransform.parent = closestBoardSquareTransform;
 			movedPieceTransform.position = closestBoardSquareTransform.position;
 
-			// SWITCH TURN ON SERVER AFTER MOVE EXECUTES
+			// Broadcast the move to all clients
 			if (NetworkManager.Singleton.IsServer)
 			{
+				Debug.Log("Sending board update to clients.");
+				UpdatePiecePositionClientRpc(move.Start.ToString(), move.End.ToString());
+
+				// Switch turn after sync
 				TurnManager.Instance.EndTurnServerRpc();
 			}
+
 		}
 	}
-	
+
+	[ServerRpc(RequireOwnership = false)]
+	public void TryRequestMoveServerRpc(string startSquareStr, string endSquareStr)
+	{
+		Square start = new Square(startSquareStr);
+		Square end = new Square(endSquareStr);
+
+		Debug.Log($"[ServerRpc] Request to move {start} → {end}");
+
+		if (!game.TryGetLegalMove(start, end, out Movement move))
+		{
+			Debug.LogWarning($"[ServerRpc] Illegal move attempted: {start} -> {end}");
+			return;
+		}
+
+		var movedPieceTransform = BoardManager.Instance.GetPieceGOAtPosition(start)?.transform;
+		var targetSquareTransform = BoardManager.Instance.GetSquareGOByPosition(end)?.transform;
+
+		if (movedPieceTransform == null || targetSquareTransform == null)
+		{
+			Debug.LogWarning($"[ServerRpc] Move rejected: couldn't find piece or square for {start} -> {end}");
+			return;
+		}
+
+		// Kick off async logic without making the ServerRpc async
+		_ = HandleServerMoveAsync(start, movedPieceTransform, targetSquareTransform);
+	}
+
+	private async Task HandleServerMoveAsync(Square start, Transform movedPieceTransform, Transform targetSquareTransform)
+	{
+		await OnPieceMoved(start, movedPieceTransform, targetSquareTransform);
+	}
+
+
+
 	/// <summary>
 	/// Determines whether the specified piece has any legal moves.
 	/// </summary>
@@ -346,4 +386,34 @@ public class GameManager : MonoBehaviourSingleton<GameManager> {
 	public bool HasLegalMoves(Piece piece) {
 		return game.TryGetLegalMovesForPiece(piece, out _);
 	}
+
+	[ClientRpc]
+	public void UpdatePiecePositionClientRpc(string startSquare, string endSquare)
+	{
+		if (NetworkManager.Singleton.IsServer) return;
+
+		Debug.Log($"[Client] Received piece move: {startSquare} → {endSquare}");
+
+		Square start = new Square(startSquare);
+		Square end = new Square(endSquare);
+
+		Debug.Log("[Client] Trying to destroy any piece on end square...");
+		BoardManager.Instance.TryDestroyVisualPiece(end); // In case something was there
+
+		var piece = BoardManager.Instance.GetPieceGOAtPosition(start);
+		if (piece != null)
+		{
+			Debug.Log($"[Client] Found piece on {start}. Moving it...");
+			var targetTransform = BoardManager.Instance.GetSquareGOByPosition(end).transform;
+			piece.transform.parent = targetTransform;
+			piece.transform.position = targetTransform.position;
+		}
+		else
+		{
+			Debug.LogWarning($"[Client] No piece found at {start} to move!");
+		}
+	}
+
+
+
 }
