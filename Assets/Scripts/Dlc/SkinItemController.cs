@@ -28,25 +28,17 @@ public class SkinItemController : MonoBehaviour
 
     private void HandleEquip()
     {
-        if (!PurchasedSkinManager.Instance.IsPurchased(skinName))
+        if (PurchasedSkinManager.Instance.IsPurchased(skinName))
+        {
+            var netSkin = FindObjectOfType<NetworkProfileSkin>(); // Or assign via inspector
+            netSkin?.EquipSkin(skinURL);
+        }
+        else
         {
             Debug.Log("You must purchase this first.");
-            return;
         }
-
-        ulong myId = Unity.Netcode.NetworkManager.Singleton.LocalClientId;
-
-        if (myId == 0) // Host
-        {
-            GameObject.Find("player1").GetComponent<ProfileSkinLoader>().LoadSkinFromURL(skinURL);
-        }
-        else // Client
-        {
-            GameObject.Find("player2").GetComponent<ProfileSkinLoader>().LoadSkinFromURL(skinURL);
-        }
-
-        Debug.Log($"Equipped {skinName} to Player {(myId == 0 ? "1" : "2")}");
     }
+
 
 
     private void UpdateUI()
