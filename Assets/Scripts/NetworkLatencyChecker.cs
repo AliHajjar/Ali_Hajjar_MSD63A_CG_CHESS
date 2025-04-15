@@ -32,7 +32,7 @@ public class NetworkLatencyChecker : NetworkBehaviour
     }
 
 
-    [ClientRpc]
+    [ClientRpc(RequireOwnership = false)]
     private void ReturnPingClientRpc(float originalClientTime, ulong clientId)
     {
         if (!IsOwner || NetworkManager.Singleton.LocalClientId != clientId)

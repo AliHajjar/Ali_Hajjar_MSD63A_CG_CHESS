@@ -316,4 +316,11 @@ public class UIManager : MonoBehaviourSingleton<UIManager> {
 	/// Updates the game string input field with the current serialized game state.
 	/// </summary>
 	private void UpdateGameStringInputField() => GameStringInputField.text = GameManager.Instance.SerializeGame();
+
+	public void OnPurchase(string name)
+	{
+		Debug.Log($"Purchased: {name}");
+		// You can add unlock logic here later
+	}
+
 }
